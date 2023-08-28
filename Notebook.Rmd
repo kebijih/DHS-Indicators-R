@@ -1,0 +1,355 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Intro
+standard recode manual here: https://www.dhsprogram.com/pubs/pdf/DHSG4/Recode7_DHS_10Sep2018_DHSG4.pdf
+
+# Setup
+
+```{r Setup}
+#  Run this chunk to load packages and data
+
+rm(list = ls(all = TRUE))
+
+# libraries needed
+library(tidyverse)  # most variable creation here uses tidyverse 
+library(tidyselect) # used to select variables in FP_EVENTS.R
+library(haven)      # used for Haven labeled DHS variables
+library(labelled)   # used for Haven labeled variable creation
+library(expss)    # for creating tables with Haven labeled data
+library(xlsx)     # for exporting to excel
+library(naniar)   # to use replace_with_na function
+library(here)       # to get R project path
+library(sjlabelled) # to set variables label
+library(survey)  # to calculate weighted ratio for GAR
+library(srvyr)
+
+#path for R project
+here()
+
+# path for this chapter. This is also where the data is stored
+chap <- "dhs-raw-data"
+
+# select your survey
+
+# HR Files
+HRdatafile <- "ZAHR71DT/ZAHR71FL.DTA"
+
+# PR Files - household member recode
+PRdatafile <- "ZAPR71DT/ZAPR71FL.DTA"
+
+# BR Files
+BRdatafile <- "ZABR71DT/ZABR71FL.DTA"
+
+# AH files - adult health recode
+AHMdatafile <- "ZAAH71DT/ZAAHM71FL.DTA" # men's data
+AHWdatafile <- "ZAAH71DT/ZAAHW71FL.DTA" # women's data
+
+# IR files
+IRdatafile <- "ZAIR71DT/ZAIR71FL.DTA"
+
+# OD files
+ODdatafile <- "ZAOD71DT/ZADV71FL.DTA"
+
+# CR files
+CRdatafile <- "ZACR71DT/ZACR71FL.DTA"
+
+# ****************************
+
+```
+
+``` {r Load datasets}
+# open datasets
+HRdata <-  read_dta(here(chap, HRdatafile))
+
+PRdata <-  read_dta(here(chap, PRdatafile))
+
+BRdata <-  read_dta(here(chap, BRdatafile))
+
+AHMdata <- read_dta(here(chap, AHMdatafile))
+
+AHWdata <- read_dta(here(chap, AHWdatafile))
+
+IRdata <- read_dta(here(chap, IRdatafile))
+
+ODdata <- read_dta(here(chap, ODdatafile))
+
+CRdata <- read_dta(here(chap, CRdatafile))
+
+```
+
+
+# AHdata
+
+## Smoking data
+
+Leigh uses `mv463aa` as the smoking variable, where a value of 1 = smoking every day, and 2 = smoking some days.
+
+```{r}
+
+view(get_label(AHMdata))
+
+AHMdata %>% 
+  select(mv463aa) %>% 
+  get_labels()
+
+```
+
+### Getting estimates per age
+
+```{r}
+
+men_smoke <- AHMdata %>% 
+  select(
+    mv012, # age
+    mv463aa
+  ) %>% 
+  mutate(
+    smoking = ifelse(mv463aa == 1 | mv463aa ==2, 1, 0)
+  ) %>% 
+  rename(age = mv012) %>% 
+  mutate(
+    age2 = age^2,
+    age3 = age^3 
+  ) %>% 
+  select(-mv463aa) %>% 
+  relocate(age, age2, age3, smoking)
+
+men_smoke
+
+men_smoke_model <- glm(
+  formula = smoking ~ age + age2 + age3,
+  family = binomial(link = "logit"),
+  data = men_smoke
+)
+
+men_smoke_model
+
+summary(men_smoke_model)
+
+exp(coefficients(men_smoke_model))
+
+exp(confint(men_smoke_model))
+
+```
+
+
+# PRdata
+
+## Underweight
+
+```{r}
+AHMdata %>% 
+  get_label() %>% 
+  view()
+```
+
+```{r}
+
+bmi_both <- PRdata %>% 
+  select(
+    hv105, #age
+    hv104, #sex
+    ha3, hb3, #height women's and men's in cm
+    ha2, hb2 #weight women's and men's 
+  ) %>%
+  rename(
+    age = hv105,
+    sex = hv104,
+    ht_w = ha3,
+    ht_m = hb3,
+    wt_w = ha2,
+    wt_m = hb2
+  ) %>% 
+  mutate(
+    bmi = ifelse(
+      sex == 1 & ht_m < 2500 & wt_m < 2500 & !is.na(ht_m) & !is.na(wt_m),
+      (wt_m / 10) / (ht_m / 1000)^2,
+      ifelse(
+        sex == 2 & ht_w < 2500 & wt_w < 2500 & !is.na(ht_w) & !is.na(wt_w),
+        (wt_w / 10) / (ht_w / 1000)^2,
+        NA
+      )
+    )
+  ) %>% 
+  mutate(
+    underwt = ifelse(
+      bmi < 18.5, 1, 0
+    )
+  ) %>% 
+  mutate(
+    age2 = age^2,
+    age3 = age^3
+  ) %>% 
+  select(sex, age, age2, age3, underwt)
+
+# Men
+bmi_men <- bmi_both %>% 
+  filter(sex == 1)
+
+bmi_men_model <- glm(
+  formula = underwt ~ age + age2 + age3,
+  family = binomial(),
+  data = bmi_men
+)
+
+exp(coefficients(bmi_men_model))
+
+# Women
+bmi_women <- bmi_both %>% 
+  filter(sex == 2)
+
+bmi_women_model <- glm(
+  formula = underwt ~ age + age2 + age3,
+  family = binomial(),
+  data = bmi_women
+)
+
+exp(coefficients(bmi_women_model))
+
+
+```
+
+
+
+```{r}
+ODdata %>% 
+  get_label() %>% 
+  view()
+```
+
+
+## Diabetes
+
+```{r}
+
+diabetes <- PRdata %>% 
+  select(
+    hv104, #sex
+    hv105, #age
+    hv024, #province
+    shmhba1c,
+    shwhba1c
+  ) %>% 
+  mutate(
+    province = as_character(hv024)
+  ) %>% 
+  mutate(
+    hba1c = ifelse(
+      hv104 == 1, 
+      shmhba1c,
+      ifelse(
+        hv104 == 2,
+        shwhba1c,
+        NA
+      )
+    )
+  ) %>% 
+  rename(
+    sex = hv104,
+    age = hv105
+  ) %>% 
+  mutate(
+    adjhba1c = (hba1c - 228) / 0.9866
+  ) %>% 
+  mutate(
+    diabetes = ifelse(adjhba1c >= 6500, 1, 0)
+  ) %>% 
+  select(sex, age, province, diabetes) %>% 
+  mutate(
+    age2 = age^2,
+    age3 = age^3
+  )
+  
+# Men
+diabetes_men <- diabetes %>% 
+  filter(sex == 1)
+
+diabetes_men_model <- glm(
+  formula = diabetes ~ age + age2 + age3,
+  family = binomial(),
+  data = diabetes_men
+)
+
+exp(coefficients(diabetes_men_model))
+
+## Results per province
+
+for (p in unique(diabetes$province)) {
+  
+  diabetes_men <- diabetes %>% 
+    filter(sex == 1) %>% 
+    filter(province == p)
+
+  diabetes_men_model <- glm(
+    formula = diabetes ~ age + age2 + age3,
+    family = binomial(),
+    data = diabetes_men
+  )
+  
+  print(p)
+  
+  print(exp(coefficients(diabetes_men_model)))
+
+}
+
+## Including province as explanatory variable
+
+diabetes_men <- diabetes %>% 
+  filter(sex == 1)
+
+diabetes_men_model <- glm(
+  formula = diabetes ~ age * province + age2 * province + age3 *province,
+  family = binomial(),
+  data = diabetes_men
+)
+
+exp(coefficients(diabetes_men_model)) %>% view()
+
+# Women
+diabetes_women <- diabetes %>% 
+  filter(sex == 2)
+
+diabetes_women_model <- glm(
+  formula = diabetes ~ age + age2 + age3,
+  family = binomial(),
+  data = diabetes_women
+)
+
+exp(coefficients(diabetes_women_model))
+
+```
+
+
+## Variables of interest
+hv024 - province
+
+```{r}
+get_labels(PRdata$hv024) %>% view()
+```
+
+
+```{r}
+
+PRdata %>% 
+  get_label() %>% 
+  view()
+
+PRdata %>% 
+  select(
+    hv104, #sex
+    ha35, #smoking last 24h women
+    hb35 #smoking last 24h men
+  ) %>% 
+  view(n = 20)
+
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
