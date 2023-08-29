@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 # Intro
@@ -8,7 +10,7 @@ standard recode manual here: https://www.dhsprogram.com/pubs/pdf/DHSG4/Recode7_D
 
 # Setup
 
-```{r Setup}
+```{r Setup, message=FALSE}
 #  Run this chunk to load packages and data
 
 rm(list = ls(all = TRUE))
@@ -92,13 +94,15 @@ AHWdata <- read_dta(here(chap, AHWdatafile))
 
 ```{r}
 
-view(get_label(AHMdata))
+# view(get_label(AHMdata))
 
 etoh_m <- AHMdata %>% 
   select(
     mv012, #age
+    mv005, #sample weight
     sm919a, sm919b, sm919c, sm919d, sm919e, sm919f, sm919g
   ) %>%
+  mutate(wt = mv005 / 1000000) %>% 
   mutate(drinkingfreq = rowSums(select(., starts_with("sm919")) != 0)) %>% 
   mutate(drinks_wk = sm919a + sm919b + sm919c + sm919d + sm919e + sm919f + sm919g) %>% 
   mutate(average_dd = drinks_wk / drinkingfreq) %>% 
@@ -107,15 +111,13 @@ etoh_m <- AHMdata %>%
     age = mv012
   ) %>% 
   mutate(age2 = age^2, age3 = age^3) %>% 
-  select(age, age2, age3, highalc)
+  select(age, age2, age3, highalc, wt)
 
 etoh_m_model <- glm(
   formula = highalc ~ age + age2 + age3,
   family = binomial(),
   data = etoh_m
 )
-
-summary(etoh_m_model)
 
 exp(coefficients(etoh_m_model))
 
@@ -125,7 +127,7 @@ exp(coefficients(etoh_m_model))
 
 ```{r}
 
-view(get_label(AHWdata))
+# view(get_label(AHWdata))
 
 etoh_w <- AHWdata %>% 
   select(
@@ -148,8 +150,6 @@ etoh_w_model <- glm(
   data = etoh_w
 )
 
-summary(etoh_w_model)
-
 exp(coefficients(etoh_w_model))
 
 ```
@@ -160,13 +160,13 @@ Leigh uses `mv463aa` as the smoking variable, where a value of 1 = smoking every
 
 ```{r}
 
-view(get_label(AHMdata))
+# view(get_label(AHMdata))
 
-view(get_label(AHWdata))
+# view(get_label(AHWdata))
 
-AHMdata %>% 
-  select(mv463aa) %>% 
-  get_labels()
+# AHMdata %>%
+#   select(mv463aa) %>% 
+#   get_labels()
 
 ```
 
@@ -206,25 +206,7 @@ smoking_model_m <- glm(
   data = smoking_m
 )
 
-summary(smoking_model_m)
-
-smoking_coeffs <- exp(coefficients(smoking_model_m))
-
-exp(confint(smoking_model_m))
-
-```
-
-### Prevalence outputs
-
-```{r}
-
-age <- c(15:90)
-
-smoking_prev_m <- tibble(age = age, sex = "males", risk_factor = "smoking")
-smoking_prev_m <- smoking_prev_m %>% 
-  mutate(odds = smoking_coeffs[1] * smoking_coeffs[2]^age * smoking_coeffs[3]^(age^2) * smoking_coeffs[4]^(age^3)) %>% 
-  mutate(prevalence = odds / (1 + odds)) %>% 
-  select(-odds)
+exp(coefficients(smoking_model_m))
 
 ```
 
@@ -238,10 +220,9 @@ smoking_model_m <- glm(
   data = smoking_m
 )
 
-summary(smoking_model_m)
-
 smoking_coeffs_m <- exp(coefficients(smoking_model_m))
 
+summary(smoking_model_m)
 ```
 
 ### Prevalence outputs
@@ -318,21 +299,6 @@ exp(confint(smoking_model_f))
 
 ```
 
-### Prevalence outputs
-
-```{r}
-
-age <- c(15:90)
-
-smoking_prev_f <- tibble(age = age, sex = "females", risk_factor = "smoking")
-smoking_prev_f <- smoking_prev_f %>% 
-  mutate(odds = smoking_coeffs_f[1] * smoking_coeffs_f[2]^age * smoking_coeffs_f[3]^(age^2) * smoking_coeffs_f[4]^(age^3)) %>% 
-  mutate(prevalence = odds / (1 + odds)) %>% 
-  select(-odds)
-
-```
-
-
 ### Model smoking ~ age + province
 
 ``` {r}
@@ -343,9 +309,9 @@ smoking_model_f <- glm(
   data = smoking_f
 )
 
-summary(smoking_model_f)
-
 smoking_coeffs_f <- exp(coefficients(smoking_model_f))
+
+summary(smoking_model_f)
 
 ```
 
@@ -464,6 +430,8 @@ underwt_model_m <- glm(
 
 underwt_coeffs_m <- exp(coefficients(underwt_model_m))
 
+summary(underwt_model_m)
+
 ```
 
 ### Prevalence outputs
@@ -529,6 +497,8 @@ underwt_model_f <- glm(
 )
 
 underwt_coeffs_f <- exp(coefficients(underwt_model_f))
+
+summary(underwt_model_f)
 
 ```
 
@@ -637,6 +607,8 @@ dm_model_m <- glm(
 
 dm_coeffs_m <- exp(coefficients(dm_model_m))
 
+summary(dm_model_m)
+
 ```
 
 ### Prevalence outputs
@@ -700,6 +672,8 @@ dm_model_f <- glm(
 
 dm_coeffs_f <- exp(coefficients(dm_model_f))
 
+summary(dm_model_f)
+
 ```
 
 ### Prevalence outputs
@@ -743,8 +717,8 @@ output <- bind_rows(
 ) %>% 
   pivot_wider(names_from = c(risk_factor, sex), values_from = prevalence)
 
-write.xlsx(output, "provincial_estimates.xlsx", rowNames = FALSE)
+# write.xlsx(output, file = "provincial_estimates.xlsx", row.names = FALSE)
+
 ```
 
-provinces
 
