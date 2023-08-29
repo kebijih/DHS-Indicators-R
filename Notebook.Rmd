@@ -56,34 +56,105 @@ ODdatafile <- "ZAOD71DT/ZADV71FL.DTA"
 # CR files
 CRdatafile <- "ZACR71DT/ZACR71FL.DTA"
 
+# MR files
+MRdatafile <- "ZAMR71DT/ZAMR71FL.DTA"
+
 # ****************************
 
 ```
 
 ``` {r Load datasets}
 # open datasets
-HRdata <-  read_dta(here(chap, HRdatafile))
+# HRdata <-  read_dta(here(chap, HRdatafile))
 
 PRdata <-  read_dta(here(chap, PRdatafile))
 
-BRdata <-  read_dta(here(chap, BRdatafile))
+# BRdata <-  read_dta(here(chap, BRdatafile))
 
 AHMdata <- read_dta(here(chap, AHMdatafile))
 
 AHWdata <- read_dta(here(chap, AHWdatafile))
 
-IRdata <- read_dta(here(chap, IRdatafile))
+# IRdata <- read_dta(here(chap, IRdatafile))
 
-ODdata <- read_dta(here(chap, ODdatafile))
+# ODdata <- read_dta(here(chap, ODdatafile))
 
-CRdata <- read_dta(here(chap, CRdatafile))
+# CRdata <- read_dta(here(chap, CRdatafile))
+
+# MRdata <- read_dta(here(chap, MRdatafile))
 
 ```
 
 
-# AHdata
+# Alcohol
 
-## Smoking data
+## Men
+
+```{r}
+
+view(get_label(AHMdata))
+
+etoh_m <- AHMdata %>% 
+  select(
+    mv012, #age
+    sm919a, sm919b, sm919c, sm919d, sm919e, sm919f, sm919g
+  ) %>%
+  mutate(drinkingfreq = rowSums(select(., starts_with("sm919")) != 0)) %>% 
+  mutate(drinks_wk = sm919a + sm919b + sm919c + sm919d + sm919e + sm919f + sm919g) %>% 
+  mutate(average_dd = drinks_wk / drinkingfreq) %>% 
+  mutate(highalc = ifelse(drinks_wk > 23, 1, 0)) %>% 
+  rename(
+    age = mv012
+  ) %>% 
+  mutate(age2 = age^2, age3 = age^3) %>% 
+  select(age, age2, age3, highalc)
+
+etoh_m_model <- glm(
+  formula = highalc ~ age + age2 + age3,
+  family = binomial(),
+  data = etoh_m
+)
+
+summary(etoh_m_model)
+
+exp(coefficients(etoh_m_model))
+
+```
+
+## Women
+
+```{r}
+
+view(get_label(AHWdata))
+
+etoh_w <- AHWdata %>% 
+  select(
+    v012, #age
+    s1227a, s1227b, s1227c, s1227d, s1227e, s1227f, s1227g
+  ) %>% 
+  mutate(drinkingfreq = rowSums(select(., starts_with("s1227")) != 0)) %>% 
+  mutate(drinks_wk = s1227a + s1227b + s1227c + s1227d + s1227e + s1227f + s1227g) %>% 
+  mutate(average_dd = drinks_wk / drinkingfreq) %>% 
+  mutate(highalc = ifelse(drinks_wk > 23, 1, 0)) %>% 
+  rename(
+    age = v012
+  ) %>% 
+  mutate(age2 = age^2, age3 = age^3) %>% 
+  select(age, age2, age3, highalc)
+
+etoh_w_model <- glm(
+  formula = highalc ~ age + age2 + age3,
+  family = binomial(),
+  data = etoh_w
+)
+
+summary(etoh_w_model)
+
+exp(coefficients(etoh_w_model))
+
+```
+
+# Smoking
 
 Leigh uses `mv463aa` as the smoking variable, where a value of 1 = smoking every day, and 2 = smoking some days.
 
@@ -91,21 +162,27 @@ Leigh uses `mv463aa` as the smoking variable, where a value of 1 = smoking every
 
 view(get_label(AHMdata))
 
+view(get_label(AHWdata))
+
 AHMdata %>% 
   select(mv463aa) %>% 
   get_labels()
 
 ```
 
-### Getting estimates per age
+## Men
+
+### Wrangle
 
 ```{r}
 
-men_smoke <- AHMdata %>% 
+smoking_m <- AHMdata %>% 
   select(
     mv012, # age
+    mv024, # province
     mv463aa
   ) %>% 
+  mutate(province = as_character(mv024)) %>% 
   mutate(
     smoking = ifelse(mv463aa == 1 | mv463aa ==2, 1, 0)
   ) %>% 
@@ -115,46 +192,214 @@ men_smoke <- AHMdata %>%
     age3 = age^3 
   ) %>% 
   select(-mv463aa) %>% 
-  relocate(age, age2, age3, smoking)
+  relocate(age, age2, age3, province, smoking)
 
-men_smoke
+```
 
-men_smoke_model <- glm(
+### Model smoking ~ age
+
+``` {r}
+
+smoking_model_m <- glm(
   formula = smoking ~ age + age2 + age3,
   family = binomial(link = "logit"),
-  data = men_smoke
+  data = smoking_m
 )
 
-men_smoke_model
+summary(smoking_model_m)
 
-summary(men_smoke_model)
+smoking_coeffs <- exp(coefficients(smoking_model_m))
 
-exp(coefficients(men_smoke_model))
+exp(confint(smoking_model_m))
 
-exp(confint(men_smoke_model))
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+smoking_prev_m <- tibble(age = age, sex = "males", risk_factor = "smoking")
+smoking_prev_m <- smoking_prev_m %>% 
+  mutate(odds = smoking_coeffs[1] * smoking_coeffs[2]^age * smoking_coeffs[3]^(age^2) * smoking_coeffs[4]^(age^3)) %>% 
+  mutate(prevalence = odds / (1 + odds)) %>% 
+  select(-odds)
+
+```
+
+### Model smoking ~ age + province
+
+``` {r}
+
+smoking_model_m <- glm(
+  formula = smoking ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = smoking_m
+)
+
+summary(smoking_model_m)
+
+smoking_coeffs_m <- exp(coefficients(smoking_model_m))
+
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, smoking_coeffs_m[5:12]) #1 is for ref group EC
+
+smoking_prev_m <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "males", risk_factor = "smoking")
+  
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = smoking_coeffs_m[1] * smoking_coeffs_m[2]^age * smoking_coeffs_m[3]^(age^2) * smoking_coeffs_m[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
+  
+  smoking_prev_m <- bind_rows(smoking_prev_m, temp)
+}
+
+smoking_prev_m %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) + 
+  geom_line()
+
+```
+
+## Women
+
+### Wrangle
+
+```{r}
+
+smoking_f <- AHWdata %>% 
+  select(
+    v012, # age
+    v024, # province
+    v463aa
+  ) %>% 
+  mutate(province = as_character(v024)) %>% 
+  mutate(
+    smoking = ifelse(v463aa == 1 | v463aa ==2, 1, 0)
+  ) %>% 
+  rename(age = v012) %>% 
+  mutate(
+    age2 = age^2,
+    age3 = age^3 
+  ) %>% 
+  select(-v463aa) %>% 
+  relocate(age, age2, age3, province, smoking)
+
+```
+
+### Model smoking ~ age
+
+``` {r}
+
+smoking_model_f <- glm(
+  formula = smoking ~ age + age2 + age3,
+  family = binomial(link = "logit"),
+  data = smoking_f
+)
+
+summary(smoking_model_f)
+
+smoking_coeffs_f <- exp(coefficients(smoking_model_f))
+
+exp(confint(smoking_model_f))
+
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+smoking_prev_f <- tibble(age = age, sex = "females", risk_factor = "smoking")
+smoking_prev_f <- smoking_prev_f %>% 
+  mutate(odds = smoking_coeffs_f[1] * smoking_coeffs_f[2]^age * smoking_coeffs_f[3]^(age^2) * smoking_coeffs_f[4]^(age^3)) %>% 
+  mutate(prevalence = odds / (1 + odds)) %>% 
+  select(-odds)
 
 ```
 
 
-# PRdata
+### Model smoking ~ age + province
 
-## Underweight
+``` {r}
+
+smoking_model_f <- glm(
+  formula = smoking ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = smoking_f
+)
+
+summary(smoking_model_f)
+
+smoking_coeffs_f <- exp(coefficients(smoking_model_f))
+
+```
+
+### Prevalence outputs
 
 ```{r}
-AHMdata %>% 
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, smoking_coeffs_f[5:12]) #1 is for ref group EC
+
+smoking_prev_f <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "females", risk_factor = "smoking")
+  
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = smoking_coeffs_f[1] * smoking_coeffs_f[2]^age * smoking_coeffs_f[3]^(age^2) * smoking_coeffs_f[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
+  
+  smoking_prev_f <- bind_rows(smoking_prev_f, temp)
+}
+
+smoking_prev_f %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) +
+  geom_line()
+
+```
+
+# Underweight
+
+## View PR data variables
+```{r}
+PRdata %>% 
   get_label() %>% 
   view()
 ```
 
+## Wrangle
 ```{r}
 
 bmi_both <- PRdata %>% 
   select(
     hv105, #age
     hv104, #sex
+    hv024, #province
     ha3, hb3, #height women's and men's in cm
     ha2, hb2 #weight women's and men's 
   ) %>%
+  mutate(province = as_character(hv024)) %>% 
   rename(
     age = hv105,
     sex = hv104,
@@ -183,45 +428,144 @@ bmi_both <- PRdata %>%
     age2 = age^2,
     age3 = age^3
   ) %>% 
-  select(sex, age, age2, age3, underwt)
-
-# Men
-bmi_men <- bmi_both %>% 
-  filter(sex == 1)
-
-bmi_men_model <- glm(
-  formula = underwt ~ age + age2 + age3,
-  family = binomial(),
-  data = bmi_men
-)
-
-exp(coefficients(bmi_men_model))
-
-# Women
-bmi_women <- bmi_both %>% 
-  filter(sex == 2)
-
-bmi_women_model <- glm(
-  formula = underwt ~ age + age2 + age3,
-  family = binomial(),
-  data = bmi_women
-)
-
-exp(coefficients(bmi_women_model))
-
+  select(sex, province, age, age2, age3, underwt)
 
 ```
 
+## Males
 
+``` {r}
+underwt_m <- bmi_both %>% 
+  filter(sex == 1)
+```
+
+### underweight ~ age
 
 ```{r}
-ODdata %>% 
-  get_label() %>% 
-  view()
+underwt_model_m <- glm(
+  formula = underwt ~ age + age2 + age3,
+  family = binomial(),
+  data = underwt_m
+)
+
+exp(coefficients(underwt_model_m))
+
+```
+
+### Model underwt ~ age + province
+
+``` {r}
+
+underwt_model_m <- glm(
+  formula = underwt ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = underwt_m
+)
+
+underwt_coeffs_m <- exp(coefficients(underwt_model_m))
+
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, underwt_coeffs_m[5:12]) #1 is for ref group EC
+
+underwt_prev_m <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "males", risk_factor = "underweight")
+  
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = underwt_coeffs_m[1] * underwt_coeffs_m[2]^age * underwt_coeffs_m[3]^(age^2) * underwt_coeffs_m[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
+  
+  underwt_prev_m <- bind_rows(underwt_prev_m, temp)
+}
+
+underwt_prev_m %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) +
+  geom_line()
+
 ```
 
 
-## Diabetes
+## Females
+
+``` {r}
+underwt_f <- bmi_both %>% 
+  filter(sex == 2)
+```
+
+### underweight ~ age
+
+``` {r}
+underwt_model_f <- glm(
+  formula = underwt ~ age + age2 + age3,
+  family = binomial(),
+  data = underwt_f
+)
+
+exp(coefficients(underwt_model_f))
+
+
+```
+
+### Model underwt ~ age + province
+
+``` {r}
+
+underwt_model_f <- glm(
+  formula = underwt ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = underwt_f
+)
+
+underwt_coeffs_f <- exp(coefficients(underwt_model_f))
+
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, underwt_coeffs_f[5:12]) #1 is for ref group EC
+
+underwt_prev_f <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "females", risk_factor = "underweight")
+  
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = underwt_coeffs_f[1] * underwt_coeffs_f[2]^age * underwt_coeffs_f[3]^(age^2) * underwt_coeffs_f[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
+  
+  underwt_prev_f <- bind_rows(underwt_prev_f, temp)
+}
+
+underwt_prev_f %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) +
+  geom_line()
+
+```
+
+
+# Diabetes
+
+## Wrangle
 
 ```{r}
 
@@ -262,94 +606,145 @@ diabetes <- PRdata %>%
     age2 = age^2,
     age3 = age^3
   )
-  
-# Men
-diabetes_men <- diabetes %>% 
-  filter(sex == 1)
+```
 
-diabetes_men_model <- glm(
+## Men
+``` {r}
+diabetes_m <- diabetes %>% 
+  filter(sex == 1)
+```
+
+### Model diabetes ~ age
+``` {r}
+dm_model_m <- glm(
   formula = diabetes ~ age + age2 + age3,
   family = binomial(),
-  data = diabetes_men
+  data = diabetes_m
 )
 
-exp(coefficients(diabetes_men_model))
+exp(coefficients(dm_model_m))
+```
 
-## Results per province
+### Model diabetes ~ age + province
 
-for (p in unique(diabetes$province)) {
+``` {r}
+
+dm_model_m <- glm(
+  formula = diabetes ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = diabetes_m
+)
+
+dm_coeffs_m <- exp(coefficients(dm_model_m))
+
+```
+
+### Prevalence outputs
+
+```{r}
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, dm_coeffs_m[5:12]) #1 is for ref group EC
+
+dm_prev_m <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "males", risk_factor = "diabetes")
   
-  diabetes_men <- diabetes %>% 
-    filter(sex == 1) %>% 
-    filter(province == p)
-
-  diabetes_men_model <- glm(
-    formula = diabetes ~ age + age2 + age3,
-    family = binomial(),
-    data = diabetes_men
-  )
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = dm_coeffs_m[1] * dm_coeffs_m[2]^age * dm_coeffs_m[3]^(age^2) * dm_coeffs_m[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
   
-  print(p)
-  
-  print(exp(coefficients(diabetes_men_model)))
-
+  dm_prev_m <- bind_rows(dm_prev_m, temp)
 }
 
-## Including province as explanatory variable
+dm_prev_m %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) +
+  geom_line()
 
-diabetes_men <- diabetes %>% 
-  filter(sex == 1)
+```
 
-diabetes_men_model <- glm(
-  formula = diabetes ~ age * province + age2 * province + age3 *province,
-  family = binomial(),
-  data = diabetes_men
-)
-
-exp(coefficients(diabetes_men_model)) %>% view()
-
-# Women
-diabetes_women <- diabetes %>% 
+## Women
+``` {r}
+diabetes_f <- diabetes %>% 
   filter(sex == 2)
+```
 
-diabetes_women_model <- glm(
+### Model diabetes ~ age
+``` {r}
+dm_model_f <- glm(
   formula = diabetes ~ age + age2 + age3,
   family = binomial(),
-  data = diabetes_women
+  data = diabetes_f
 )
 
-exp(coefficients(diabetes_women_model))
+exp(coefficients(dm_model_f))
 
 ```
 
 
-## Variables of interest
-hv024 - province
+### Model diabetes ~ age + province
+
+``` {r}
+
+dm_model_f <- glm(
+  formula = diabetes ~ age + age2 + age3 + province,
+  family = binomial(link = "logit"),
+  data = diabetes_f
+)
+
+dm_coeffs_f <- exp(coefficients(dm_model_f))
+
+```
+
+### Prevalence outputs
 
 ```{r}
-get_labels(PRdata$hv024) %>% view()
+
+age <- c(15:90)
+
+provinces <- c("EC", "FS", "GP", "KZN", "LP", "MP", "NW", "NC", "WC")
+
+provincial_coeffs <- c(1, dm_coeffs_f[5:12]) #1 is for ref group EC
+
+dm_prev_f <- tibble()
+
+for (n in 1:9) {
+  temp <- tibble(age = age, sex = "females", risk_factor = "diabetes")
+  
+  temp <- temp %>% 
+    mutate(province = provinces[n]) %>% 
+    mutate(odds = dm_coeffs_f[1] * dm_coeffs_f[2]^age * dm_coeffs_f[3]^(age^2) * dm_coeffs_f[4]^(age^3) * provincial_coeffs[n]) %>% 
+    mutate(prevalence = odds / (1 + odds)) %>% 
+    select(-odds)
+  
+  dm_prev_f <- bind_rows(dm_prev_f, temp)
+}
+
+dm_prev_m %>% 
+  ggplot(aes(x = age, y = prevalence, color = province)) +
+  geom_line()
+
 ```
 
+
+# Combine outputs
 
 ```{r}
+output <- bind_rows(
+  smoking_prev_f, smoking_prev_m,
+  underwt_prev_f, underwt_prev_m,
+  dm_prev_f, dm_prev_m
+) %>% 
+  pivot_wider(names_from = c(risk_factor, sex), values_from = prevalence)
 
-PRdata %>% 
-  get_label() %>% 
-  view()
-
-PRdata %>% 
-  select(
-    hv104, #sex
-    ha35, #smoking last 24h women
-    hb35 #smoking last 24h men
-  ) %>% 
-  view(n = 20)
-
+write.xlsx(output, "provincial_estimates.xlsx", rowNames = FALSE)
 ```
 
+provinces
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
-
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
