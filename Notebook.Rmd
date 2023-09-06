@@ -101,6 +101,18 @@ AHWdata <- read_dta(here(chap, AHWdatafile))
 
 # view(get_label(AHMdata))
 
+# The below code confirms that missing values for sm919 should be treated as zeroes. Those who responded 'no' to sm916 (ever consumed alcohol) were not asked sm917 (consumed alcohol in last 12m). Those who responded 'no' to the latter were not asked sm919
+# AHMdata %>% 
+#   select(
+#     mv012, #age
+#     mv024, #province
+#     sm916:sm924
+#   ) %>% 
+#   mutate(drinks_wk = sm919a + sm919b + sm919c + sm919d + sm919e + sm919f + sm919g) %>%
+#   mutate(drinks_last_wk_recorded = ifelse(!is.na(drinks_wk), 1, NA)) %>% 
+#   count(sm916, sm917, drinks_last_wk_recorded) %>% 
+#   view()
+
 etoh_m <- AHMdata %>% 
   select(
     mv012, #age
@@ -113,7 +125,7 @@ etoh_m <- AHMdata %>%
   mutate(drinks_wk = sm919a + sm919b + sm919c + sm919d + sm919e + sm919f + sm919g) %>% 
   # mutate(average_dd = drinks_wk / drinkingfreq) %>% # not used currently
   mutate(highalc = ifelse(drinks_wk > 23, 1, 0)) %>% 
-  mutate(highalc = ifelse(is.na(highalc), 0, highalc)) %>% #Leigh treats missing values as no alcohol intake
+  mutate(highalc = ifelse(is.na(highalc), 0, highalc)) %>% #Missing values should be interpreted as no alcohol intake
   rename(
     age = mv012
   ) %>% 
@@ -239,6 +251,18 @@ etoh_prev_m_q %>%
 
 # view(get_label(AHWdata))
 
+# The below code confirms that missing values for s1227 should be treated as zeroes. Those who responded 'no' to s1224 (ever consumed alcohol) were not asked s1225 (consumed alcohol in last 12m). Those who responded 'no' to the latter were not asked s1227
+# AHWdata %>%
+#   select(
+#     v012, #age
+#     v024, #province
+#     s1224:s1228
+#   ) %>%
+#   mutate(drinks_wk = s1227a + s1227b + s1227c + s1227d + s1227e + s1227f + s1227g) %>%
+#   mutate(drinks_last_wk_recorded = ifelse(!is.na(drinks_wk), 1, NA)) %>%
+#   count(s1224, s1225, drinks_last_wk_recorded) %>%
+#   view()
+
 etoh_w <- AHWdata %>% 
   select(
     v012, #age
@@ -250,7 +274,7 @@ etoh_w <- AHWdata %>%
   mutate(drinks_wk = s1227a + s1227b + s1227c + s1227d + s1227e + s1227f + s1227g) %>% 
   # mutate(average_dd = drinks_wk / drinkingfreq) %>% 
   mutate(highalc = ifelse(drinks_wk > 23, 1, 0)) %>% 
-  mutate(highalc = ifelse(is.na(highalc), 0, highalc)) %>% #Leigh treats missing values as no alcohol intake
+  mutate(highalc = ifelse(is.na(highalc), 0, highalc)) %>% #Missing values should be interpreted as no alcohol intake
   rename(
     age = v012
   ) %>% 
