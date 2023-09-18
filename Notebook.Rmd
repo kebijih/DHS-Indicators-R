@@ -145,26 +145,31 @@ etoh_m <- AHMdata %>%
   mutate(age2 = age^2, age3 = age^3) %>% 
   select(age, age2, age3, province, highalc, anyalc, drinks_wk, etoh_5)
 
-## TRYING OUT ORDINAL LR
+```
 
-# drinking_levels <- c("none", "1-10", "11-20", ">20")
-# 
-# etoh_m <- etoh_m %>% 
-#   mutate(etohcat = ifelse(drinks_wk == 0, "none",
-#                           ifelse(drinks_wk >0 & drinks_wk <=10, "1-10",
-#                                  ifelse(drinks_wk > 10 & drinks_wk <=20, "11-20",
-#                                         ifelse(drinks_wk >20, ">20", NA))))) %>% 
-#   mutate(etohcat = factor(etohcat, levels = drinking_levels))
-# 
-# etoh_cat_model <- MASS::polr(
-#   etohcat ~ age + age2 + province,
-#   data = etoh_m,
-#   Hess = TRUE
-# )
-# 
-# summary(etoh_cat_model)
-# 
-# exp(coefficients(etoh_cat_model))
+### Testing ordinal LR
+
+```{r}
+
+
+drinking_levels <- c("none", "1-10", "11-20", ">20")
+
+etoh_cat_m <- etoh_m %>%
+  mutate(etohcat = ifelse(drinks_wk == 0, "none",
+                          ifelse(drinks_wk >0 & drinks_wk <=10, "1-10",
+                                 ifelse(drinks_wk > 10 & drinks_wk <=20, "11-20",
+                                        ifelse(drinks_wk >20, ">20", NA))))) %>%
+  mutate(etohcat = factor(etohcat, levels = drinking_levels))
+
+etoh_cat_model <- MASS::polr(
+  etohcat ~ age + scale(age2) + province, # needed to scale age2 to prevent NaNs from output
+  data = etoh_cat_m,
+  Hess = TRUE
+)
+
+summary(etoh_cat_model)
+
+exponentiated_output(etoh_cat_model)
 
 ```
 
@@ -446,6 +451,28 @@ etoh_prev_m_q %>%
     color = ~province,
     mode = "lines"
   )
+
+# TESTING PREDICT() FUNCTION
+# This works - can refactor code later for all other predictions
+# d <- data.frame(
+#   age = rep(15:90, each = 9),
+#   age2 = rep((15:90)^2, each = 9),
+#   province = unique(etoh_m$province)
+# )
+# 
+# predict_test <- cbind(
+#   d, 
+#   prevalence = predict(etoh_model_m, d, type = "response"),
+#   risk_factor = "alcohol"
+# )
+# 
+# predict_test %>% 
+#   plot_ly(
+#     x = ~age,
+#     y = ~prevalence,
+#     color = ~province,
+#     mode = "lines"
+#   )
 
 ```
 
